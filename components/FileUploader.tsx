@@ -6,6 +6,9 @@ import { cn, convertFileToUrl, getFileType } from "@/lib/utils";
 import Image from "next/image";
 import Thumbnail from "./Thumbnail";
 import { MAX_FILE_SIZE } from "@/constant";
+import { useToast } from "@/hooks/use-toast";
+import { uploadFile } from "@/lib/actions/file.action";
+import { usePathname } from "next/navigation";
 interface Props {
   ownerId: string;
   accountId: string;
@@ -13,6 +16,8 @@ interface Props {
 }
 const FileUploader = ({ ownerId, accountId, className }: Props) => {
   const [files, setFiles] = useState<any[]>([]);
+  const path = usePathname();
+  const { toast } = useToast();
   const handleRemoveFile = (
     e: React.MouseEvent<HTMLImageElement>,
     fileName: string
@@ -20,14 +25,42 @@ const FileUploader = ({ ownerId, accountId, className }: Props) => {
     e.stopPropagation();
     setFiles((prev) => prev.filter((file) => file.name !== fileName));
   };
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    setFiles(acceptedFiles);
-    const filePromise = acceptedFiles.map(async (file) => {
-        if(file.size > MAX_FILE_SIZE){
-            setFiles((prev) => prev.filter((f) => f.name!== file.name));
+
+  const onDrop = useCallback(
+    async (acceptedFiles: File[]) => {
+      setFiles(acceptedFiles);
+      const uploadPromises = acceptedFiles.map(async (file) => {
+        if (file.size > MAX_FILE_SIZE) {
+          setFiles((prevFiles) =>
+            prevFiles.filter((f) => f.name !== file.name)
+          );
+
+          return toast({
+            description: (
+              <p className='body-2 text-white'>
+                <span className='font-semibold'>{file.name}</span> is too large.
+                Max file size is 50MB.
+              </p>
+            ),
+            className: "error-toast",
+          });
         }
-    }
-  }, []);
+
+        return uploadFile({ file, ownerId, accountId, path }).then(
+          (uploadedFile) => {
+            if (uploadedFile) {
+              setFiles((prevFiles) =>
+                prevFiles.filter((f) => f.name !== file.name)
+              );
+            }
+          }
+        );
+      });
+
+      await Promise.all(uploadPromises);
+    },
+    [ownerId, accountId, path]
+  );
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop });
 
   return (
@@ -80,11 +113,6 @@ const FileUploader = ({ ownerId, accountId, className }: Props) => {
             );
           })}
         </ul>
-      )}
-      {isDragActive ? (
-        <p>Drop the files here ...</p>
-      ) : (
-        <p>Drag 'n' drop some files here, or click to select files</p>
       )}
     </div>
   );
